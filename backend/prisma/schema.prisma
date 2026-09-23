@@ -13,15 +13,18 @@ datasource db {
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
-  email        String        @unique
-  name         String
-  password     String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  documents    Documents[]
-  subjects     Subject[]
-  quizAttempts QuizAttempt[]
+  id                       Int                       @id @default(autoincrement())
+  email                    String                    @unique
+  name                     String
+  password                 String
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  documents                Documents[]
+  subjects                 Subject[]
+  quizAttempts             QuizAttempt[]
+  conceptAttempts          ConceptAttempt[]
+  personalizedQuizs        PersonalizedQuiz[]
+  personalizedQuizAttempts PersonalizedQuizAttempt[]
 }
 
 model Documents {
@@ -39,11 +42,12 @@ model Documents {
   updatedAt     DateTime       @updatedAt
   studyMaterial StudyMaterial?
 
-  subject_id   Int?
-  Subject      Subject?      @relation(fields: [subject_id], references: [id])
-  topic        topic?        @relation(fields: [topicId], references: [id])
-  topicId      Int?
-  quizAttempts QuizAttempt[]
+  subject_id      Int?
+  Subject         Subject?         @relation(fields: [subject_id], references: [id])
+  topic           topic?           @relation(fields: [topicId], references: [id])
+  topicId         Int?
+  quizAttempts    QuizAttempt[]
+  conceptAttempts ConceptAttempt[]
 }
 
 model DocumentChunk {
@@ -70,15 +74,16 @@ model Embedding {
 }
 
 model Subject {
-  id          Int         @id @default(autoincrement())
-  name        String
-  description String
-  user_id     Int
-  User        User        @relation(fields: [user_id], references: [id])
-  topic       topic[]
-  created_at  DateTime    @default(now())
-  updated_at  DateTime    @updatedAt
-  documents   Documents[]
+  id                Int                @id @default(autoincrement())
+  name              String
+  description       String
+  user_id           Int
+  User              User               @relation(fields: [user_id], references: [id])
+  topic             topic[]
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+  documents         Documents[]
+  personalizedQuizs PersonalizedQuiz[]
 }
 
 model StudyMaterial {
@@ -110,14 +115,15 @@ model topic {
 }
 
 model concepts {
-  id          Int      @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   topic_id    Int
-  Topic       topic    @relation(fields: [topic_id], references: [id])
+  Topic       topic            @relation(fields: [topic_id], references: [id])
   name        String
   description String
   importance  String
   difficulty  String
-  created_at  DateTime @default(now())
+  attempts    ConceptAttempt[]
+  created_at  DateTime         @default(now())
 }
 
 model QuizAttempt {
@@ -134,4 +140,52 @@ model QuizAttempt {
 
   @@index([user_id])
   @@index([document_id])
+}
+
+model ConceptAttempt {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  concept_id  Int
+  document_id Int?
+  correct     Boolean
+  created_at  DateTime @default(now())
+
+  User     User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  Concept  concepts   @relation(fields: [concept_id], references: [id], onDelete: Cascade)
+  Document Documents? @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([concept_id])
+  @@index([document_id])
+}
+
+model PersonalizedQuiz {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  subject_id Int?
+  questions  Json
+  created_at DateTime @default(now())
+
+  User     User                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  Subject  Subject?                  @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  attempts PersonalizedQuizAttempt[]
+
+  @@index([user_id])
+  @@index([subject_id])
+}
+
+model PersonalizedQuizAttempt {
+  id              Int      @id @default(autoincrement())
+  quiz_id         Int
+  user_id         Int
+  score           Int
+  total_questions Int
+  answers         Json
+  created_at      DateTime @default(now())
+
+  Quiz PersonalizedQuiz @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  User User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([quiz_id])
 }

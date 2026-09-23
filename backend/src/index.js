@@ -12,6 +12,10 @@ const app= express()
 app.use(express.json())
 app.use(cors())
 
+
+app.use("/api/dashboard", require("./routes/dashboard"));
+app.use("/api/personalized-quiz", require("./routes/personalized-quiz"));
+app.use("/api/progress", require("./routes/progress"));
 app.use("/api/quiz", require("./routes/quiz"));
 app.use("/api/auth", require("./routes/auth"))
 app.use("/api/revision", require("./routes/revision"))

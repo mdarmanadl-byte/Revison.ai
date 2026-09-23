@@ -108,16 +108,17 @@ Return ONLY valid JSON:
     "string"
   ],
   "mcqs": [
-    {
-      "question": "string",
-      "options": [
-        "string",
-        "string",
-        "string",
-        "string"
-      ],
-      "correct_answer": "string",
-      "explanation": "string"
+   {
+        "question": "string",
+        "options": [
+            "string",
+            "string",
+            "string",
+            "string"
+        ],
+        "correct_answer": "string",
+        "explanation": "string",
+        "concept": "string"
     }
   ]
 }

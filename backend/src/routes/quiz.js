@@ -27,7 +27,6 @@ router.post("/submit/:documentId", async (req, res) => {
             });
         }
 
-        // Make sure document belongs to logged-in user
         const document =
             await prisma.documents.findFirst({
                 where: {
@@ -65,8 +64,13 @@ router.post("/submit/:documentId", async (req, res) => {
 
         let score = 0;
 
-        const result = mcqs.map((mcq, index) => {
-            const userAnswer = answers[index] ?? null;
+        const result = [];
+
+        for (let index = 0; index < mcqs.length; index++) {
+            const mcq = mcqs[index];
+
+            const userAnswer =
+                answers[index] ?? null;
 
             const correct =
                 userAnswer === mcq.correct_answer;
@@ -75,14 +79,46 @@ router.post("/submit/:documentId", async (req, res) => {
                 score++;
             }
 
-            return {
+            // Find concept generated for this MCQ
+            let concept = null;
+
+            if (mcq.concept) {
+                concept =
+                    await prisma.concepts.findFirst({
+                        where: {
+                            name: mcq.concept,
+
+                            Topic: {
+                                subject_id:
+                                    document.subject_id,
+                            },
+                        },
+                    });
+            }
+
+            // Save concept performance
+            if (concept) {
+                await prisma.conceptAttempt.create({
+                    data: {
+                        user_id: req.user.id,
+                        concept_id: concept.id,
+                        document_id: documentId,
+                        correct,
+                    },
+                });
+            }
+
+            result.push({
                 question: mcq.question,
                 user_answer: userAnswer,
-                correct_answer: mcq.correct_answer,
+                correct_answer:
+                    mcq.correct_answer,
                 correct,
-                explanation: mcq.explanation,
-            };
-        });
+                explanation:
+                    mcq.explanation,
+                concept: mcq.concept || null,
+            });
+        }
 
         const attempt =
             await prisma.quizAttempt.create({
@@ -111,7 +147,10 @@ router.post("/submit/:documentId", async (req, res) => {
             },
         });
     } catch (error) {
-        console.error("Quiz submission error:", error);
+        console.error(
+            "Quiz submission error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
@@ -122,7 +161,7 @@ router.post("/submit/:documentId", async (req, res) => {
 });
 
 
-// GET QUIZ HISTORY FOR DOCUMENT
+// QUIZ HISTORY
 router.get("/history/:documentId", async (req, res) => {
     try {
         const documentId = Number(req.params.documentId);
@@ -158,7 +197,10 @@ router.get("/history/:documentId", async (req, res) => {
             attempts,
         });
     } catch (error) {
-        console.error("Quiz history error:", error);
+        console.error(
+            "Quiz history error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
@@ -169,7 +211,7 @@ router.get("/history/:documentId", async (req, res) => {
 });
 
 
-// GET USER PROGRESS
+// OVERALL PROGRESS
 router.get("/progress", async (req, res) => {
     try {
         const attempts =
@@ -218,7 +260,10 @@ router.get("/progress", async (req, res) => {
             },
         });
     } catch (error) {
-        console.error("Progress error:", error);
+        console.error(
+            "Progress error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
