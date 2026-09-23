@@ -11,7 +11,12 @@ const cors=require('cors')
 const app= express()
 app.use(express.json())
 app.use(cors())
+
+app.use("/api/quiz", require("./routes/quiz"));
+app.use("/api/auth", require("./routes/auth"))
+app.use("/api/revision", require("./routes/revision"))
 app.use('/api/subjects', require('./routes/subjects'))
+app.use('/api/documents', require('./routes/documents'))
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use('/upload',uploadrouter)
 app.use("/api/ask", askRouter);

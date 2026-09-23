@@ -1,8 +1,9 @@
 const express = require("express");
 const prisma = require("../config/prisma.js");
-
+const auth = require("../middleware/auth.js");
 const router = express.Router();
 
+router.use(auth);
 // CREATE SUBJECT
 router.post("/", async (req, res) => {
     try {
@@ -19,7 +20,7 @@ router.post("/", async (req, res) => {
             data: {
                 name: name.trim(),
                 description: description.trim(),
-                user_id: 1, // temporary until JWT auth
+                user_id: 1,
             },
         });
 
@@ -44,8 +45,9 @@ router.get("/", async (req, res) => {
     try {
         const subjects = await prisma.subject.findMany({
             where: {
-                user_id: 1, // temporary until JWT auth
+                user_id: 1,
             },
+
             include: {
                 documents: {
                     select: {
@@ -53,10 +55,18 @@ router.get("/", async (req, res) => {
                         title: true,
                         file_name: true,
                         status: true,
+                        topic_id: true,
                         createdAt: true,
                     },
                 },
+
+                topic: {
+                    include: {
+                        concepts: true,
+                    },
+                },
             },
+
             orderBy: {
                 created_at: "desc",
             },
@@ -79,7 +89,7 @@ router.get("/", async (req, res) => {
 });
 
 
-// GET SINGLE SUBJECT
+// GET SINGLE SUBJECT DASHBOARD
 router.get("/:id", async (req, res) => {
     try {
         const subjectId = Number(req.params.id);
@@ -96,15 +106,32 @@ router.get("/:id", async (req, res) => {
                 id: subjectId,
                 user_id: 1,
             },
+
             include: {
                 documents: {
                     orderBy: {
                         createdAt: "desc",
                     },
+
+                    include: {
+                        studyMaterial: true,
+                    },
                 },
+
                 topic: {
+                    orderBy: {
+                        created_at: "desc",
+                    },
+
                     include: {
                         concepts: true,
+                        documents: {
+                            select: {
+                                id: true,
+                                title: true,
+                                status: true,
+                            },
+                        },
                     },
                 },
             },
@@ -119,14 +146,23 @@ router.get("/:id", async (req, res) => {
 
         res.json({
             success: true,
-            subject,
+
+            subject: {
+                id: subject.id,
+                name: subject.name,
+                description: subject.description,
+
+                documents: subject.documents,
+
+                topics: subject.topic,
+            },
         });
     } catch (error) {
-        console.error("Get subject error:", error);
+        console.error("Get subject dashboard error:", error);
 
         res.status(500).json({
             success: false,
-            message: "Failed to fetch subject",
+            message: "Failed to fetch subject dashboard",
             error: error.message,
         });
     }
@@ -179,5 +215,6 @@ router.delete("/:id", async (req, res) => {
         });
     }
 });
+
 
 module.exports = router;

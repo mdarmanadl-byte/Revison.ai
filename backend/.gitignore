@@ -5,7 +5,7 @@ node_modules
 /src/generated
 
 /src/generated/prisma
-
+/uploads
 /node_modules
 .env
 text.md
