@@ -1,0 +1,112 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        Int         @id @default(autoincrement())
+  email     String      @unique
+  name      String
+  password  String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  documents Documents[]
+  subjects  Subject[]
+}
+
+model Documents {
+  id            Int             @id @default(autoincrement())
+  title         String
+  file_name     String
+  file_type     String
+  file_url      String
+  status        String
+  documentchunk DocumentChunk[]
+
+  user_id       Int
+  User          User           @relation(fields: [user_id], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  studyMaterial StudyMaterial?
+
+  subject_id Int?
+  Subject    Subject? @relation(fields: [subject_id], references: [id])
+}
+
+model DocumentChunk {
+  id          Int        @id @default(autoincrement())
+  content     String
+  page_number Int
+  chunk_index Int
+  document_id Int
+  embedding   Embedding?
+  Document    Documents  @relation(fields: [document_id], references: [id])
+  created_at  DateTime   @default(now())
+}
+
+model Embedding {
+  id       Int           @id @default(autoincrement())
+  chunk_id Int           @unique
+  chunk    DocumentChunk @relation(fields: [chunk_id], references: [id], onDelete: Cascade)
+
+  // pgvector type
+  vector Unsupported("vector(2048)")
+
+  model      String
+  created_at DateTime @default(now())
+}
+
+model Subject {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String
+  user_id     Int
+  User        User        @relation(fields: [user_id], references: [id])
+  topic       topic[]
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+  documents   Documents[]
+}
+
+model StudyMaterial {
+  id          Int       @id @default(autoincrement())
+  document_id Int       @unique
+  document    Documents @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  summary          String
+  key_concepts     Json
+  important_points Json
+  mcqs             Json
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model topic {
+  id         Int        @id @default(autoincrement())
+  subject_id Int
+  Subject    Subject    @relation(fields: [subject_id], references: [id])
+  name       String
+  decription String
+  concepts   concepts[]
+}
+
+model concepts {
+  id          Int      @id @default(autoincrement())
+  topic_id    Int
+  Topic       topic    @relation(fields: [topic_id], references: [id])
+  name        String
+  description String
+  importance  String
+  difficulty  String
+  created_at  DateTime @default(now())
+}
