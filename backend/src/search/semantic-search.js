@@ -1,5 +1,5 @@
 const prisma = require("../config/prisma.js");
-const { createEmbedding } = require("../ai/embedding.js");
+const { createEmbedding } = require("../documents/embedding.js");
 
 async function semanticSearch(
     query,

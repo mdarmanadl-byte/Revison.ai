@@ -2,7 +2,7 @@ const express = require("express");
 const prisma = require("../config/prisma.js");
 const {
     generateStudyMaterial,
-} = require("../ai/study-material.js");
+} = require("../documents/study-material.js");
 
 const router = express.Router();
 
