@@ -6,316 +6,254 @@ const router = express.Router();
 
 router.use(auth);
 
-
-// MAIN DASHBOARD
 router.get("/", async (req, res) => {
-    try {
-        const userId = req.user.id;
+  try {
+    const userId = req.user.id;
 
-        const subjects =
-            await prisma.subject.findMany({
-                where: {
-                    user_id: userId,
-                },
+    // --------------------------------------------------
+    // 1. Get user's subjects
+    // --------------------------------------------------
 
-                include: {
-                    documents: {
-                        select: {
-                            id: true,
-                            title: true,
-                            status: true,
-                            topic_id: true,
-                            createdAt: true,
-                        },
-                    },
+    const subjects = await prisma.subject.findMany({
+      where: {
+        user_id: userId,
+      },
 
-                    topic: {
-                        include: {
-                            concepts: true,
-                        },
-                    },
-                },
+      include: {
+        documents: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            createdAt: true,
+          },
+        },
 
-                orderBy: {
-                    created_at: "desc",
-                },
-            });
+        topic: {
+          include: {
+            concepts: true,
+          },
+        },
+      },
 
-        const attempts =
-            await prisma.quizAttempt.findMany({
-                where: {
-                    user_id: userId,
-                },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
 
-                select: {
-                    document_id: true,
-                    score: true,
-                    total_questions: true,
-                    created_at: true,
-                },
-            });
+    // --------------------------------------------------
+    // 2. Get quiz attempts
+    // --------------------------------------------------
 
-        const conceptAttempts =
-            await prisma.conceptAttempt.findMany({
-                where: {
-                    user_id: userId,
-                },
+    const quizAttempts = await prisma.quizAttempt.findMany({
+      where: {
+        user_id: userId,
+      },
 
-                include: {
-                    Concept: {
-                        include: {
-                            Topic: true,
-                        },
-                    },
-                },
-            });
+      include: {
+        Document: {
+          select: {
+            id: true,
+            title: true,
+            subject_id: true,
+          },
+        },
+      },
 
+      orderBy: {
+        created_at: "desc",
+      },
+    });
 
-        // -------------------------
-        // OVERALL PROGRESS
-        // -------------------------
+    // --------------------------------------------------
+    // 3. Get concept attempts
+    // --------------------------------------------------
 
-        const totalQuestions =
-            attempts.reduce(
-                (sum, attempt) =>
-                    sum + attempt.total_questions,
-                0
-            );
+    const conceptAttempts = await prisma.conceptAttempt.findMany({
+      where: {
+        user_id: userId,
+      },
 
-        const totalCorrect =
-            attempts.reduce(
-                (sum, attempt) =>
-                    sum + attempt.score,
-                0
-            );
+      include: {
+        Concept: {
+          include: {
+            Topic: true,
+          },
+        },
+      },
 
-        const overallPercentage =
-            totalQuestions > 0
-                ? Math.round(
-                      (totalCorrect /
-                          totalQuestions) *
-                          100
-                  )
-                : 0;
+      orderBy: {
+        created_at: "desc",
+      },
+    });
 
+    // --------------------------------------------------
+    // 4. Basic overview
+    // --------------------------------------------------
 
-        // -------------------------
-        // WEAK CONCEPTS
-        // -------------------------
+    const totalSubjects = subjects.length;
 
-        const conceptMap = new Map();
+    const totalDocuments = subjects.reduce(
+      (total, subject) => total + subject.documents.length,
+      0
+    );
 
-        for (const attempt of conceptAttempts) {
-            const conceptId =
-                attempt.concept_id;
+    const totalQuizAttempts = quizAttempts.length;
 
-            if (!conceptMap.has(conceptId)) {
-                conceptMap.set(conceptId, {
-                    concept_id: conceptId,
+    const totalQuestions = quizAttempts.reduce(
+      (total, attempt) => total + attempt.total_questions,
+      0
+    );
 
-                    concept_name:
-                        attempt.Concept.name,
+    const totalCorrect = quizAttempts.reduce(
+      (total, attempt) => total + attempt.score,
+      0
+    );
 
-                    topic:
-                        attempt.Concept.Topic.name,
+    const overallPercentage =
+      totalQuestions > 0
+        ? Math.round((totalCorrect / totalQuestions) * 100)
+        : 0;
 
-                    total: 0,
+    // --------------------------------------------------
+    // 5. Subject progress
+    // --------------------------------------------------
 
-                    correct: 0,
-                });
-            }
+    const subjectProgress = subjects.map((subject) => {
+      const subjectDocumentIds = subject.documents.map(
+        (document) => document.id
+      );
 
-            const item =
-                conceptMap.get(conceptId);
+      const attempts = quizAttempts.filter((attempt) =>
+        subjectDocumentIds.includes(attempt.document_id)
+      );
 
-            item.total++;
+      const questions = attempts.reduce(
+        (total, attempt) => total + attempt.total_questions,
+        0
+      );
 
-            if (attempt.correct) {
-                item.correct++;
-            }
-        }
+      const correct = attempts.reduce(
+        (total, attempt) => total + attempt.score,
+        0
+      );
 
-        const weakConcepts =
-            Array.from(
-                conceptMap.values()
-            )
-                .map((item) => ({
-                    ...item,
+      const percentage =
+        questions > 0
+          ? Math.round((correct / questions) * 100)
+          : 0;
 
-                    accuracy:
-                        Math.round(
-                            (item.correct /
-                                item.total) *
-                                100
-                        ),
-                }))
+      return {
+        id: subject.id,
+        name: subject.name,
+        description: subject.description,
+        documents: subject.documents,
+        topics: subject.topic,
+        document_count: subject.documents.length,
+        topic_count: subject.topic.length,
+        progress: percentage,
+      };
+    });
 
-                .filter(
-                    (item) =>
-                        item.accuracy < 70
-                )
+    // --------------------------------------------------
+    // 6. Weak concepts
+    // --------------------------------------------------
 
-                .sort(
-                    (a, b) =>
-                        a.accuracy -
-                        b.accuracy
-                )
+    const conceptMap = new Map();
 
-                .slice(0, 10);
+    for (const attempt of conceptAttempts) {
+      const concept = attempt.Concept;
 
+      if (!concept) continue;
 
-        // -------------------------
-        // SUBJECT PROGRESS
-        // -------------------------
-
-        const subjectData =
-            subjects.map((subject) => {
-                const documentIds =
-                    subject.documents.map(
-                        (document) =>
-                            document.id
-                    );
-
-                const subjectAttempts =
-                    attempts.filter(
-                        (attempt) =>
-                            documentIds.includes(
-                                attempt.document_id
-                            )
-                    );
-
-                const questions =
-                    subjectAttempts.reduce(
-                        (sum, attempt) =>
-                            sum +
-                            attempt.total_questions,
-                        0
-                    );
-
-                const correct =
-                    subjectAttempts.reduce(
-                        (sum, attempt) =>
-                            sum +
-                            attempt.score,
-                        0
-                    );
-
-                const percentage =
-                    questions > 0
-                        ? Math.round(
-                              (correct /
-                                  questions) *
-                                  100
-                          )
-                        : 0;
-
-                return {
-                    id: subject.id,
-
-                    name: subject.name,
-
-                    description:
-                        subject.description,
-
-                    documents:
-                        subject.documents,
-
-                    topics: subject.topic,
-
-                    progress: {
-                        attempts:
-                            subjectAttempts.length,
-
-                        questions,
-
-                        correct,
-
-                        percentage,
-                    },
-                };
-            });
-
-
-        // -------------------------
-        // RECENT QUIZ ATTEMPTS
-        // -------------------------
-
-        const recentAttempts =
-            await prisma.quizAttempt.findMany({
-                where: {
-                    user_id: userId,
-                },
-
-                orderBy: {
-                    created_at: "desc",
-                },
-
-                take: 10,
-
-                include: {
-                    Document: {
-                        select: {
-                            id: true,
-                            title: true,
-                        },
-                    },
-                },
-            });
-
-
-        return res.json({
-            success: true,
-
-            dashboard: {
-                overview: {
-                    total_subjects:
-                        subjects.length,
-
-                    total_documents:
-                        subjects.reduce(
-                            (sum, subject) =>
-                                sum +
-                                subject.documents
-                                    .length,
-                            0
-                        ),
-
-                    total_quiz_attempts:
-                        attempts.length,
-
-                    total_questions:
-                        totalQuestions,
-
-                    total_correct:
-                        totalCorrect,
-
-                    overall_percentage:
-                        overallPercentage,
-                },
-
-                subjects: subjectData,
-
-                weak_concepts:
-                    weakConcepts,
-
-                recent_attempts:
-                    recentAttempts,
-            },
+      if (!conceptMap.has(concept.id)) {
+        conceptMap.set(concept.id, {
+          id: concept.id,
+          name: concept.name,
+          description: concept.description,
+          difficulty: concept.difficulty,
+          importance: concept.importance,
+          topic: concept.Topic?.name || null,
+          total: 0,
+          correct: 0,
         });
-    } catch (error) {
-        console.error(
-            "Dashboard error:",
-            error
-        );
+      }
 
-        return res.status(500).json({
-            success: false,
-            message:
-                "Failed to load dashboard",
-            error: error.message,
-        });
+      const item = conceptMap.get(concept.id);
+
+      item.total += 1;
+
+      if (attempt.correct) {
+        item.correct += 1;
+      }
     }
-});
 
+    const weakConcepts = Array.from(conceptMap.values())
+      .map((concept) => ({
+        ...concept,
+        accuracy:
+          concept.total > 0
+            ? Math.round(
+                (concept.correct / concept.total) * 100
+              )
+            : 0,
+      }))
+      .filter((concept) => concept.accuracy < 70)
+      .sort((a, b) => a.accuracy - b.accuracy)
+      .slice(0, 10);
+
+    // --------------------------------------------------
+    // 7. Recent quiz attempts
+    // --------------------------------------------------
+
+    const recentAttempts = quizAttempts
+      .slice(0, 10)
+      .map((attempt) => ({
+        id: attempt.id,
+        document_id: attempt.document_id,
+        document_title: attempt.Document?.title || "Unknown",
+        subject_id: attempt.Document?.subject_id || null,
+        score: attempt.score,
+        total_questions: attempt.total_questions,
+        percentage:
+          attempt.total_questions > 0
+            ? Math.round(
+                (attempt.score / attempt.total_questions) * 100
+              )
+            : 0,
+        created_at: attempt.created_at,
+      }));
+
+    // --------------------------------------------------
+    // 8. Response
+    // --------------------------------------------------
+
+    return res.json({
+      success: true,
+
+      overview: {
+        subjects: totalSubjects,
+        documents: totalDocuments,
+        quiz_attempts: totalQuizAttempts,
+        questions_answered: totalQuestions,
+        correct_answers: totalCorrect,
+        overall_percentage: overallPercentage,
+      },
+
+      subjects: subjectProgress,
+
+      weak_concepts: weakConcepts,
+
+      recent_attempts: recentAttempts,
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load dashboard",
+    });
+  }
+});
 
 module.exports = router;
