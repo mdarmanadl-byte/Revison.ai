@@ -24,7 +24,7 @@ async function answerQuestion(question) {
         .join("\n\n");
 
     const response = await client.chat.completions.create({
-        model: "nvidia/nemotron-3-nano-30b-a3b",
+        model: process.env.LLM_MODEL,
         messages: [
             {
                 role: "system",

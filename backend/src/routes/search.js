@@ -12,7 +12,7 @@ router.post("/", async (req, res) => {
                 success: false,
                 message: "Query is required",
             });
-        }
+        } 
 
         const parsedLimit = Math.min(
             Math.max(Number(limit) || 5, 1),

@@ -8,7 +8,7 @@ const client = new OpenAI({
     baseURL: "https://integrate.api.nvidia.com/v1",
 });
 
-const MODEL = "nvidia/nemotron-3-nano-30b-a3b";
+const MODEL = process.env.LLM_MODEL;
 
 async function answerQuestion({
     question,

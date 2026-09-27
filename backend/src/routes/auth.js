@@ -49,6 +49,7 @@ router.post("/register", async (req, res) => {
         const hashedPassword =
             await bcrypt.hash(password, 10);
 
+
         const user = await prisma.user.create({
             data: {
                 name: name.trim(),
@@ -56,10 +57,22 @@ router.post("/register", async (req, res) => {
                 password: hashedPassword,
             },
         });
+        
+        const token = jwt.sign(
+            {
+                userId: user.id,
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn:
+                    process.env.JWT_EXPIRES_IN || "7d",
+            }
+        );
 
         return res.status(201).json({
             success: true,
             message: "User registered successfully",
+            token,
             user: {
                 id: user.id,
                 name: user.name,
