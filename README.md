@@ -1,1533 +1,501 @@
-# ReviseAI Backend
+# Revison.ai
 
-> AI-powered personal revision and memory system for students.
+> An AI-powered personal revision assistant that helps students turn their study material into structured, searchable learning resources.
 
-ReviseAI helps students turn their study material into a persistent knowledge base and then uses that knowledge to generate revision plans, questions, flashcards, tests, and personalized learning sessions.
+Revison.ai is being built to make revision more organized and active. Students can create subjects, upload their study material, and use AI to extract topics and concepts, generate revision resources, and ask questions grounded in their own notes.
 
-The backend is responsible for:
+The long-term goal is to go beyond summarizing PDFs: Revison.ai aims to help students understand what they have studied, identify topics they struggle with, and decide what to revise next.
 
-* Authentication and user management
-* Document upload and processing
-* Text extraction and chunking
-* AI-powered concept extraction
-* Knowledge graph creation
-* Vector embeddings and semantic search
-* AI-generated questions and explanations
-* Memory tracking
-* Spaced-repetition scheduling
-* Revision sessions
-* Background processing
-* Personalized revision recommendations
+**Project status:** Active development. The repository contains working backend components, while some product features and the broader architecture described below are still being developed.
 
 ---
 
-# 1. Technology Stack
+## Table of contents
 
-## Core
-
-| Technology | Purpose                  |
-| ---------- | ------------------------ |
-| Node.js    | Backend runtime          |
-| TypeScript | Type safety              |
-| Express.js | HTTP API                 |
-| PostgreSQL | Main database            |
-| Prisma     | ORM/database access      |
-| pgvector   | Vector similarity search |
-| Redis      | Queue/cache              |
-| BullMQ     | Background jobs          |
-| JWT        | Authentication           |
-| Zod        | Request validation       |
-
-## AI
-
-| Component           | Purpose                                                           |
-| ------------------- | ----------------------------------------------------------------- |
-| NVIDIA Nemotron     | Reasoning, summarization, concept extraction, question generation |
-| Embedding model/API | Convert text/concepts into vectors                                |
-| Vision/OCR model    | Process handwritten notes/images when required                    |
-| Image model         | Optional diagrams/visual learning material                        |
+- [What the project aims to do](#what-the-project-aims-to-do)
+- [Current implementation](#current-implementation)
+- [How the current backend works](#how-the-current-backend-works)
+- [Technology stack](#technology-stack)
+- [Current backend structure](#current-backend-structure)
+- [Planned product architecture](#planned-product-architecture)
+- [Development roadmap](#development-roadmap)
+- [Getting started](#getting-started)
+- [Contributing](#contributing)
+- [Project status and limitations](#project-status-and-limitations)
 
 ---
 
-# 2. High-Level Architecture
+## What the project aims to do
 
-```text
-                         FRONTEND
-                     Next.js / React
-                            │
-                            │ HTTP / WebSocket
-                            ▼
-                   ┌──────────────────┐
-                   │   Express API    │
-                   │     Node.js      │
-                   └────────┬─────────┘
-                            │
-             ┌──────────────┼──────────────┐
-             │              │              │
-             ▼              ▼              ▼
-        PostgreSQL        Redis          AI Layer
-        + pgvector        Queue          Nemotron
-             │              │              │
-             │              ▼              │
-             │          BullMQ Workers     │
-             │              │              │
-             └──────────────┼──────────────┘
-                            │
-                            ▼
-                       AI Processing
-```
+The intended learning workflow is:
+
+1. **Create subjects** — organize study material into subjects such as Mathematics, Biology, History, or Computer Science.
+2. **Upload study material** — add PDF notes or learning resources to a subject.
+3. **Extract topics and concepts** — process the document and use AI to identify the topic and important concepts in its content.
+4. **Create revision material** — generate summaries, key concepts, important points, and practice questions from the uploaded material.
+5. **Ask questions** — retrieve relevant passages from a student's notes and generate answers grounded in that material.
+6. **Practice and review** — attempt quizzes, track performance, and identify weaker concepts.
+7. **Revise strategically** — the longer-term goal is to use learning history and performance to recommend what a student should revise next.
+
+The subject is selected or created by the student. AI-assisted topic and concept extraction is performed on the uploaded material; a complete automatic syllabus or chapter hierarchy is not yet implemented.
 
 ---
 
-# 3. Project Structure
+## Current implementation
 
-```text
-src/
-│
-├── app.ts
-├── server.ts
-│
-├── config/
-│
-├── routes/
-│
-├── auth/
-│
-├── users/
-│
-├── documents/
-│
-├── knowledge/
-│
-├── ai/
-│
-├── tests/
-│
-├── revision/
-│
-├── search/
-│
-├── workers/
-│
-├── middleware/
-│
-├── db/
-│
-├── utils/
-│
-├── types/
-│
-└── lib/
-```
+The following describes backend functionality present in the repository. It does not imply that every feature has a finished frontend or a complete end-to-end user experience.
+
+| Area | Current status |
+|---|---|
+| User authentication | Backend authentication and protected routes are present |
+| Subject organization | Subject creation and user-scoped subject retrieval |
+| PDF ingestion | Authenticated PDF upload, text extraction, cleaning, and chunking |
+| Topic and concept extraction | Nemotron-based topic/concept analysis and persistence |
+| Embeddings | NVIDIA Nemotron embedding integration |
+| Semantic retrieval | PostgreSQL/pgvector similarity search over document chunks |
+| RAG question answering | Retrieves relevant note chunks and generates context-grounded answers |
+| Study material generation | Backend logic for summaries, key concepts, important points, and MCQs |
+| Quiz attempts | MCQ answer evaluation and attempt persistence |
+| Progress tracking | Subject-level and overall progress calculations |
+| Weak-topic identification | Uses concept performance to identify lower-accuracy concepts |
+| Frontend integration | Still under development |
+| Spaced repetition and revision planning | Planned; not yet implemented as a complete system |
+| Knowledge graph and concept relationships | Future direction; not currently implemented as a complete graph system |
+| Redis/BullMQ background workers | Planned; not part of the current implementation |
 
 ---
 
-# 4. Application Entry Files
+## How the current backend works
 
-## `src/app.ts`
+### 1. Subject and document organization
 
-Creates and configures the Express application.
+A student creates a subject and uploads a PDF against that subject. The backend checks that the subject belongs to the authenticated user before associating the document with it.
 
-Responsibilities:
+### 2. PDF processing
 
-* Create Express app
-* Register middleware
-* Register routes
-* Register error handler
-* Configure CORS
-* Configure JSON parsing
+The current document-processing pipeline:
 
-Example flow:
+- Extracts text from the uploaded PDF.
+- Cleans extracted text.
+- Splits the text into smaller chunks.
+- Stores the chunks in PostgreSQL.
+- Generates embeddings for the chunks using NVIDIA's embedding API.
+- Stores vector representations for semantic retrieval.
+- Runs topic and concept analysis on the processed content.
+
+At present, chunk page metadata is not a reliable page-by-page citation system.
+
+### 3. Topic and concept analysis
+
+The topic-analysis module uses NVIDIA Nemotron to identify a topic and concepts from the document content. The extracted information is validated and saved to the database.
+
+The current behavior is document-level topic/concept extraction. It should not be confused with a fully automated hierarchy that understands an entire textbook's chapters, sections, prerequisites, and relationships.
+
+### 4. Study material generation
+
+The study-material module processes document chunks in batches and can generate:
+
+- A summary
+- Key concepts
+- Important points
+- Multiple-choice questions (MCQs)
+
+This is implemented as backend functionality. The complete student-facing workflow is still being developed.
+
+### 5. Semantic search and RAG
+
+The retrieval flow is:
 
 ```text
-app.ts
-   │
-   ├── middleware
-   ├── routes
-   └── error handler
+Student question
+      |
+      v
+Generate query embedding
+      |
+      v
+Search document chunks with pgvector
+      |
+      v
+Retrieve the most relevant chunks
+      |
+      v
+Pass retrieved context to Nemotron
+      |
+      v
+Generate an answer grounded in the notes
 ```
 
-It should NOT start the server.
+The RAG prompt instructs the model to use the supplied study material and to say when the answer is not available in that material. Retrieved source information is returned with the answer so the application can show where the response came from.
+
+### 6. Practice and progress
+
+The backend includes quiz-attempt evaluation and persistence, progress calculations, and weak-concept identification based on recorded performance.
+
+Personalized quiz generation and the broader practice experience are still being refined. These should not yet be treated as a fully complete adaptive assessment system.
 
 ---
 
-## `src/server.ts`
+## Technology stack
 
-Starts the HTTP server.
+The stack below distinguishes technologies used by the current backend from technologies being considered for future development.
 
-```text
-server.ts
-     │
-     └── app.ts
-           │
-           └── Express application
-```
+### Currently used
 
-Keeping `app.ts` and `server.ts` separate makes testing easier.
+| Technology | Role |
+|---|---|
+| JavaScript | Backend language |
+| Node.js | Runtime |
+| Express.js | HTTP API |
+| PostgreSQL | Relational database |
+| Prisma | ORM and database access |
+| pgvector | Vector similarity search |
+| NVIDIA Nemotron | Topic/concept analysis, study-material generation, and RAG responses |
+| NVIDIA Nemotron Embeddings | Text and query embeddings |
+| JWT | Authentication |
+| PDF text extraction libraries | PDF text extraction |
 
----
+### Planned or under consideration
 
-# 5. Configuration
+| Technology / capability | Intended use |
+|---|---|
+| Redis | Caching and asynchronous processing support |
+| BullMQ | Background job queues and workers |
+| OCR / vision model | Extracting content from scanned or handwritten notes |
+| Flashcards | Additional active-recall format |
+| Spaced-repetition algorithm | Scheduling revision based on learning history |
+| Concept relationships | Representing connections between related concepts |
 
-```text
-src/config/
-│
-├── env.ts
-├── database.ts
-├── redis.ts
-└── ai.ts
-```
-
-## `env.ts`
-
-Loads and validates environment variables.
-
-Example:
-
-```text
-DATABASE_URL
-REDIS_URL
-JWT_SECRET
-NVIDIA_API_KEY
-```
-
-Use Zod to validate them when the application starts.
+Planned technologies are not dependencies of the current working backend unless they are added to the implementation.
 
 ---
 
-## `database.ts`
+## Current backend structure
 
-Creates the database/Prisma connection.
-
-Used by:
+The following is the current structure of the main backend modules, rather than a proposed future directory layout:
 
 ```text
-users
-documents
-knowledge
-tests
-revision
-search
-```
-
----
-
-## `redis.ts`
-
-Creates the Redis connection.
-
-Used by:
-
-```text
-workers
-queues
-rate limiting
-temporary processing state
-```
-
----
-
-## `ai.ts`
-
-Stores AI client configuration.
-
-Used by:
-
-```text
-ai/nemotron
-ai/summarizer
-ai/question-generator
-ai/evaluator
-```
-
----
-
-# 6. Authentication
-
-```text
-src/auth/
-│
-├── auth.routes.ts
-├── auth.controller.ts
-├── auth.service.ts
-├── auth.schema.ts
-├── auth.types.ts
-└── auth.utils.ts
-```
-
-## Purpose
-
-Handles:
-
-* Registration
-* Login
-* Logout
-* Token generation
-* Password hashing
-* Authentication
-
-### Dependency
-
-```text
-auth
- ├── database
- ├── Prisma
- ├── JWT
- └── bcrypt
-```
-
-### Main endpoints
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/logout
-GET  /api/auth/me
-```
-
----
-
-# 7. Users
-
-```text
-src/users/
-│
-├── user.routes.ts
-├── user.controller.ts
-├── user.service.ts
-├── user.schema.ts
-└── user.types.ts
-```
-
-Responsible for:
-
-* User profile
-* Exam preference
-* Subjects
-* Learning preferences
-* Revision preferences
-
-Example:
-
-```text
-User
- │
- ├── UPSC
- ├── Indian Polity
- ├── History
- ├── Geography
- └── Current Affairs
-```
-
-### Dependencies
-
-```text
-users
- ├── auth middleware
- └── database
-```
-
----
-
-# 8. Documents
-
-This is one of the most important modules.
-
-```text
-src/documents/
-│
-├── document.routes.ts
-├── document.controller.ts
-├── document.service.ts
-├── document.schema.ts
-├── document.types.ts
-│
-├── upload/
-│   ├── upload.service.ts
-│   └── upload.utils.ts
-│
-├── extraction/
-│   ├── extraction.service.ts
-│   ├── pdf.extractor.ts
-│   ├── image.extractor.ts
-│   └── text.cleaner.ts
-│
-└── processing/
-    ├── processing.service.ts
-    ├── chunker.ts
-    └── document.pipeline.ts
-```
-
-## Purpose
-
-Handles:
-
-```text
-Upload
-   ↓
-Store
-   ↓
-Extract
-   ↓
-Clean
-   ↓
-Chunk
-   ↓
-AI processing
-```
-
-### Upload
-
-Accept:
-
-* PDF
-* JPG
-* PNG
-* WebP
-* potentially DOCX later
-
-### Extraction
-
-Converts:
-
-```text
-PDF/image
-   ↓
-Raw text
-```
-
-### Processing
-
-Converts:
-
-```text
-Raw text
-   ↓
-Clean text
-   ↓
-Semantic chunks
-```
-
-### Dependencies
-
-```text
-documents
- ├── database
- ├── object storage
- ├── extraction libraries
- ├── AI layer
- └── workers
-```
-
----
-
-# 9. Knowledge
-
-The knowledge module represents what the student has learned.
-
-```text
-src/knowledge/
-│
-├── concept.routes.ts
-├── concept.controller.ts
-├── concept.service.ts
-│
-├── concepts/
-│   ├── concept.service.ts
-│   └── concept.repository.ts
-│
-├── relationships/
-│   ├── relationship.service.ts
-│   └── relationship.repository.ts
-│
-└── embeddings/
-    ├── embedding.service.ts
-    ├── embedding.repository.ts
-    └── vector.service.ts
-```
-
----
-
-## Concepts
-
-Example:
-
-```text
-Fundamental Rights
-       │
-       ├── Article 14
-       ├── Article 19
-       ├── Article 21
-       └── Article 32
-```
-
-A concept can contain:
-
-```text
-id
-name
-description
-subject
-importance
-difficulty
-memory_strength
-```
-
----
-
-## Relationships
-
-Stores relationships between concepts.
-
-Example:
-
-```text
-Article 32
+backend/
+├── prisma/
+│   └── schema.prisma
+└── src/
+    ├── ai/
+    │   ├── rag.js
+    │   ├── topic-analyzer.js
+    │   ├── personalized-quiz.js
+    │   └── save-topic.js
     │
-    ├── related to → Fundamental Rights
-    ├── related to → Supreme Court
-    └── related to → Article 226
+    ├── documents/
+    │   ├── process-document.js
+    │   ├── embedding.js
+    │   └── study-material.js
+    │
+    ├── search/
+    │   └── semantic-search.js
+    │
+    └── routes/
+        ├── documents.js
+        ├── subjects.js
+        ├── study-material.js
+        ├── personalized-quiz.js
+        ├── quiz.js
+        ├── progress.js
+        └── weak-topics.js
 ```
 
-This allows ReviseAI to understand that topics aren't isolated.
+This is a focused overview of the main modules, not necessarily an exhaustive listing of every file in the repository.
+
+### Main module responsibilities
+
+| Module | Responsibility |
+|---|---|
+| `ai/rag.js` | Retrieves relevant study chunks and generates answers using their context |
+| `ai/topic-analyzer.js` | Uses Nemotron to extract a topic and concepts from document content |
+| `ai/save-topic.js` | Persists topic and concept analysis |
+| `ai/personalized-quiz.js` | Contains personalized quiz-generation logic; still being refined |
+| `documents/process-document.js` | Extracts, cleans, chunks, embeds, and stores PDF content |
+| `documents/embedding.js` | Calls NVIDIA's embedding API |
+| `documents/study-material.js` | Generates summaries, key concepts, important points, and MCQs |
+| `search/semantic-search.js` | Performs vector similarity search over stored document chunks |
+| `routes/` | Exposes backend functionality through API routes |
 
 ---
 
-## Embeddings
+## Planned product architecture
 
-Converts concepts/chunks into vectors.
-
-```text
-Text
- ↓
-Embedding model
- ↓
-Vector
- ↓
-PostgreSQL + pgvector
-```
-
-Used for:
-
-* Semantic search
-* Related concepts
-* RAG
-* Finding relevant study material
-* Question generation
-
-### Dependencies
+As the project grows, the backend is intended to move toward clearer domain boundaries. The structure below is a **target architecture**, not a claim about folders or files that already exist.
 
 ```text
-knowledge
- ├── database
- ├── pgvector
- ├── embedding model
- └── AI layer
-```
-
----
-
-# 10. AI Layer
-
-```text
-src/ai/
+backend/
+├── src/
+│   ├── auth/
+│   ├── users/
+│   ├── subjects/
+│   ├── documents/
+│   │   ├── upload/
+│   │   ├── extraction/
+│   │   └── processing/
+│   │
+│   ├── knowledge/
+│   │   ├── topics/
+│   │   ├── concepts/
+│   │   └── relationships/
+│   │
+│   ├── ai/
+│   │   ├── providers/
+│   │   ├── summarization/
+│   │   ├── question-generation/
+│   │   └── evaluation/
+│   │
+│   ├── search/
+│   ├── quizzes/
+│   ├── progress/
+│   ├── revision/
+│   │   ├── scheduling/
+│   │   ├── memory/
+│   │   └── sessions/
+│   │
+│   ├── workers/
+│   ├── middleware/
+│   └── utils/
 │
-├── nemotron/
-│   ├── nemotron.client.ts
-│   ├── nemotron.service.ts
-│   └── nemotron.types.ts
-│
-├── summarizer/
-│   ├── summarizer.service.ts
-│   └── summarizer.prompts.ts
-│
-├── question-generator/
-│   ├── question.service.ts
-│   ├── question.prompts.ts
-│   └── question.types.ts
-│
-└── evaluator/
-    ├── evaluator.service.ts
-    ├── evaluator.prompts.ts
-    └── evaluator.types.ts
+└── prisma/
+    └── schema.prisma
 ```
 
----
+### Intended learning organization
 
-# 11. Nemotron
-
-`nemotron.client.ts`
-
-Responsible only for communicating with NVIDIA's API/service.
-
-Do not put business logic here.
-
-Example:
-
-```text
-nemotron.client
-       ↓
-NVIDIA API
-```
-
----
-
-## `nemotron.service.ts`
-
-Provides reusable AI operations.
-
-Example:
-
-```text
-generate()
-summarize()
-extractConcepts()
-generateQuestions()
-evaluateAnswer()
-```
-
-Other modules should use the service instead of directly calling the NVIDIA API.
-
----
-
-# 12. Summarizer
-
-Responsible for transforming study material into useful revision content.
-
-```text
-Document
-   ↓
-Relevant chunks
-   ↓
-Nemotron
-   ↓
-Structured revision notes
-```
-
-Output could include:
-
-```text
-Summary
-Key points
-Definitions
-Important facts
-Comparisons
-Examples
-Related concepts
-```
-
----
-
-# 13. Question Generator
-
-Creates questions from the student's actual study material.
-
-```text
-Concepts
-   +
-Relevant chunks
-   ↓
-Nemotron
-   ↓
-Questions
-```
-
-Question types:
-
-* MCQ
-* True/False
-* Short answer
-* Fill in the blank
-* Descriptive
-* UPSC-style questions
-
-Every generated question should store its source concept/chunk.
-
-This allows:
-
-```text
-Question
-   ↓
-Source
-   ↓
-Original study material
-```
-
----
-
-# 14. Evaluator
-
-Evaluates student answers.
-
-```text
-Question
-   +
-Student answer
-   +
-Reference material
-   ↓
-Evaluator
-   ↓
-Score
-Explanation
-Weak concepts
-```
-
-The evaluator should update the student's knowledge/memory state.
-
----
-
-# 15. Tests
-
-```text
-src/tests/
-│
-├── test.routes.ts
-├── test.controller.ts
-├── test.service.ts
-├── test.repository.ts
-└── test.types.ts
-```
-
-Responsible for creating and managing tests.
-
-Examples:
-
-```http
-POST /api/tests
-GET  /api/tests/:id
-POST /api/tests/:id/submit
-GET  /api/tests/:id/result
-```
-
-Dependencies:
-
-```text
-tests
- ├── questions
- ├── knowledge
- ├── AI evaluator
- └── database
-```
-
----
-
-# 16. Revision
-
-This is the core product logic.
-
-```text
-src/revision/
-│
-├── revision.routes.ts
-├── revision.controller.ts
-├── revision.service.ts
-│
-├── scheduler/
-│   ├── scheduler.service.ts
-│   ├── spaced-repetition.ts
-│   └── priority.ts
-│
-├── memory/
-│   ├── memory.service.ts
-│   ├── memory-score.ts
-│   └── memory.repository.ts
-│
-└── sessions/
-    ├── session.service.ts
-    ├── session.repository.ts
-    └── session.types.ts
-```
-
----
-
-# 17. Memory System
-
-The memory system tracks how well a student remembers a concept.
-
-Example:
-
-```text
-Concept: Article 32
-
-Memory strength: 42%
-Last studied: 12 days ago
-Last tested: 2 days ago
-Correct answers: 4/10
-```
-
-The score should eventually consider:
-
-```text
-Time since revision
-+
-Correct answers
-+
-Incorrect answers
-+
-Difficulty
-+
-Response time
-+
-Importance
-```
-
----
-
-# 18. Revision Scheduler
-
-Answers the question:
-
-> "What should this student revise today?"
-
-Inputs:
-
-```text
-Memory strength
-Last revision
-Importance
-Difficulty
-Previous performance
-Related concepts
-```
-
-Output:
-
-```text
-Today's revision
-
-1. Article 32        15 min
-2. Article 226       10 min
-3. Fundamental Rights 10 min
-4. Practice test      15 min
-```
-
----
-
-# 19. Revision Sessions
-
-A revision session represents one actual learning session.
-
-Example:
-
-```text
-Session
- ├── Article 32
- ├── Article 226
- ├── 5 flashcards
- ├── 5 questions
- └── final score
-```
-
-Used for:
-
-* Progress tracking
-* Memory updates
-* Analytics
-* Streaks
-
----
-
-# 20. Search
-
-```text
-src/search/
-│
-├── search.routes.ts
-├── search.controller.ts
-├── search.service.ts
-├── semantic-search.ts
-└── search.types.ts
-```
-
-Supports:
-
-```text
-Keyword search
-+
-Semantic search
-```
-
-Example:
-
-Student searches:
-
-> "Supreme Court constitutional remedies"
-
-The system can find relevant content even if the exact phrase doesn't appear.
-
-Dependencies:
-
-```text
-search
- ├── PostgreSQL
- ├── pgvector
- └── embeddings
-```
-
----
-
-# 21. Workers
-
-AI processing should NOT happen inside normal HTTP requests.
-
-```text
-src/workers/
-│
-├── queues/
-│   ├── document.queue.ts
-│   ├── embedding.queue.ts
-│   └── question.queue.ts
-│
-├── document-worker.ts
-├── embedding-worker.ts
-└── question-worker.ts
-```
-
----
-
-# 22. Document Worker
-
-Triggered after upload.
-
-```text
-Upload
-  ↓
-Redis Queue
-  ↓
-Document Worker
-  ↓
-Extract
-  ↓
-Clean
-  ↓
-Chunk
-  ↓
-Store
-```
-
----
-
-# 23. Embedding Worker
-
-Triggered after document processing.
-
-```text
-Chunks
-  ↓
-Embedding model
-  ↓
-Vectors
-  ↓
-pgvector
-```
-
-This prevents slow embedding operations from blocking API requests.
-
----
-
-# 24. Question Worker
-
-Generates questions asynchronously.
-
-```text
-Concepts
-   ↓
-Question Queue
-   ↓
-Worker
-   ↓
-Nemotron
-   ↓
-Validate
-   ↓
-Store Questions
-```
-
----
-
-# 25. Middleware
-
-```text
-src/middleware/
-│
-├── auth.middleware.ts
-├── error.middleware.ts
-├── rate-limit.middleware.ts
-├── validation.middleware.ts
-└── upload.middleware.ts
-```
-
-## Authentication Middleware
-
-Checks JWT.
-
-```text
-Request
- ↓
-JWT
- ↓
-User
- ↓
-Route
-```
-
----
-
-## Error Middleware
-
-Centralized error handling.
-
-All controllers should use this instead of manually returning random error formats.
-
----
-
-## Validation Middleware
-
-Validates incoming requests using Zod.
-
-Example:
-
-```text
-POST /tests
-
-Request
- ↓
-Zod validation
- ↓
-Controller
-```
-
----
-
-# 26. Database
-
-```text
-src/db/
-│
-├── prisma.ts
-└── repositories/
-```
-
-Prisma schema should live outside `src`:
-
-```text
-prisma/
-└── schema.prisma
-```
-
-Main entities:
-
-```text
-User
-Document
-DocumentChunk
-Subject
-Topic
-Concept
-ConceptRelationship
-Embedding
-Question
-Test
-TestAttempt
-Answer
-MemoryState
-RevisionSession
-RevisionItem
-```
-
----
-
-# 27. Utils
-
-```text
-src/utils/
-│
-├── logger.ts
-├── errors.ts
-├── pagination.ts
-├── dates.ts
-├── hashing.ts
-└── retry.ts
-```
-
-Only put genuinely reusable utilities here.
-
-Do not turn `utils/` into a dumping ground.
-
----
-
-# 28. Types
-
-```text
-src/types/
-│
-├── express.d.ts
-├── api.ts
-└── common.ts
-```
-
-Shared TypeScript types.
-
-Domain-specific types should stay inside their modules.
-
----
-
-# 29. Lib
-
-```text
-src/lib/
-│
-├── storage.ts
-├── queue.ts
-└── logger.ts
-```
-
-Contains initialized third-party integrations.
-
-Example:
-
-```text
-lib/storage
-      ↓
-Object storage provider
-
-lib/queue
-      ↓
-BullMQ
-
-lib/logger
-      ↓
-Logging system
-```
-
----
-
-# 30. Request Flow — Uploading Notes
-
-Complete flow:
+The planned content model is:
 
 ```text
 Student
-   │
-   ▼
-POST /api/documents
-   │
-   ▼
-document.controller
-   │
-   ▼
-document.service
-   │
-   ├── Store file
-   │
-   └── Create database record
-             │
-             ▼
-        Document Queue
-             │
-             ▼
-       document-worker
-             │
-       ┌─────┴─────┐
-       ▼           ▼
-   extraction    processing
-       │           │
-       └─────┬─────┘
-             ▼
-          Chunks
-             │
-             ▼
-       embedding queue
-             │
-             ▼
-      embedding-worker
-             │
-             ▼
-         pgvector
-             │
-             ▼
-       AI processing
-             │
-             ▼
-          Concepts
-             │
-             ▼
-     Knowledge Database
+  |
+  └── Subject
+        |
+        └── Study material
+              |
+              └── Topic
+                    |
+                    └── Concepts
 ```
+
+A subject groups a student's material. Documents provide the source content from which topics and concepts can be extracted. Over time, the system may also represent relationships between concepts, but a full knowledge graph is a future capability.
+
+### Intended AI components
+
+The AI layer is intended to separate provider communication from learning-related tasks:
+
+| Component | Intended responsibility |
+|---|---|
+| AI provider client | Communicate with the selected model API |
+| Summarizer | Produce concise, structured revision notes |
+| Topic/concept extractor | Identify topics and concepts in study material |
+| Question generator | Create practice questions from source material |
+| Evaluator | Assess submitted answers against reference material |
+
+The current code uses JavaScript modules under `backend/src/ai`, `backend/src/documents`, and `backend/src/search`. The modular design above is a direction for future refactoring and expansion.
 
 ---
 
-# 31. Request Flow — Taking a Test
+## Long-term revision and memory vision
+
+A major goal is to make revision adaptive rather than simply generating notes.
+
+The intended system may consider:
+
+- Which concepts a student has studied
+- Quiz and practice performance
+- Correct and incorrect answers
+- How long it has been since a concept was revised
+- Concept difficulty and importance
+- The student's previous revision history
+
+Using these signals, a future revision scheduler could recommend what to study next.
 
 ```text
-Student
-   │
-   ▼
-GET /api/tests/:id
-   │
-   ▼
-Test Service
-   │
-   ▼
-Questions
-   │
-   ▼
-Student answers
-   │
-   ▼
-POST /api/tests/:id/submit
-   │
-   ▼
-Evaluator
-   │
-   ├── Score
-   ├── Explanation
-   └── Weak concepts
-             │
-             ▼
-       Memory Service
-             │
-             ▼
-      Revision Scheduler
-             │
-             ▼
-     Next revision date
+Study material
+      |
+      v
+Topics and concepts
+      |
+      v
+Summaries and practice questions
+      |
+      v
+Student attempts
+      |
+      v
+Performance and progress history
+      |
+      v
+Identify concepts needing attention
+      |
+      v
+Recommend the next revision
 ```
+
+This memory-and-revision loop is the long-term product vision. A complete spaced-repetition engine, memory-strength model, daily revision scheduler, and revision-session system are not yet implemented.
 
 ---
 
-# 32. Request Flow — Today's Revision
+## Development roadmap
 
-```text
-GET /api/revision/today
-             │
-             ▼
-      Revision Service
-             │
-      ┌──────┼─────────┐
-      ▼      ▼         ▼
-    Memory  History  Importance
-      │      │         │
-      └──────┼─────────┘
-             ▼
-       Priority Engine
-             │
-             ▼
-       Today's Plan
-```
+The roadmap is intentionally incremental. Items are plans, not assertions that the corresponding feature is already available.
 
-Response:
+### Phase 1 — Core learning organization
+- [x] Subject creation and retrieval
+- [x] PDF upload flow
+- [x] PDF text extraction and chunking
+- [x] Store documents and chunks
+- [ ] Improve document lifecycle and error handling
+- [ ] Complete the student-facing subject/document experience
 
-```json
-{
-  "date": "2026-08-22",
-  "estimatedMinutes": 45,
-  "items": [
-    {
-      "concept": "Fundamental Rights",
-      "reason": "Weak and overdue",
-      "duration": 15
-    },
-    {
-      "concept": "Article 32",
-      "reason": "Low recent accuracy",
-      "duration": 10
-    }
-  ]
-}
-```
+### Phase 2 — AI-assisted study material
+- [x] NVIDIA Nemotron integration
+- [x] Topic and concept extraction logic
+- [x] Summary and key-point generation logic
+- [x] MCQ generation logic in the study-material module
+- [ ] Improve output validation and quality checks
+- [ ] Complete frontend integration for generated material
 
----
+### Phase 3 — Retrieval and question answering
+- [x] Generate embeddings for document chunks
+- [x] Store vectors in PostgreSQL/pgvector
+- [x] Semantic search over study material
+- [x] RAG-based question answering
+- [ ] Improve source attribution and retrieval evaluation
+- [ ] Add broader retrieval and filtering options
 
-# 33. Dependency Rules
+### Phase 4 — Practice and progress
+- [x] Quiz-attempt evaluation and persistence
+- [x] Progress calculation
+- [x] Weak-concept identification
+- [ ] Stabilize personalized quiz generation
+- [ ] Add more question formats
+- [ ] Build a complete practice and results experience
 
-The most important architectural rule:
+### Phase 5 — Adaptive revision
+- [ ] Track concept-level revision history
+- [ ] Design a memory-strength model
+- [ ] Implement spaced-repetition scheduling
+- [ ] Recommend daily revision tasks
+- [ ] Build revision sessions and learning analytics
 
-```text
-Routes
-  ↓
-Controllers
-  ↓
-Services
-  ↓
-Repositories
-  ↓
-Database
-```
+### Phase 6 — Architecture and scalability
+- [ ] Refactor AI functionality into provider and task-specific modules
+- [ ] Add asynchronous workers for long-running processing
+- [ ] Evaluate Redis and BullMQ for job processing
+- [ ] Improve observability, testing, and failure recovery
 
-AI should be accessed through:
-
-```text
-Services
-  ↓
-AI Services
-  ↓
-AI Provider
-```
-
-Workers should call services, not duplicate business logic.
-
-### Bad
-
-```text
-controller → NVIDIA API
-worker → NVIDIA API
-test → NVIDIA API
-```
-
-### Good
-
-```text
-controller
-    ↓
-service
-    ↓
-AI service
-    ↓
-Nemotron client
-    ↓
-NVIDIA
-```
-
-This means if we replace Nemotron later, most of the application doesn't change.
+### Phase 7 — Frontend and product experience
+- [ ] Complete dashboard and subject views
+- [ ] Integrate document upload and processing status
+- [ ] Display generated summaries and concepts
+- [ ] Build quiz, progress, and weak-topic screens
+- [ ] Add the adaptive revision experience as its backend becomes available
 
 ---
 
-# 34. Important Dependency Direction
+## Getting started
 
-```text
-HTTP Routes
-     ↓
-Controllers
-     ↓
-Domain Services
-     ↓
-Repositories
-     ↓
-Database
-```
+The backend uses Node.js, PostgreSQL, Prisma, and NVIDIA API access.
 
-And:
+1. Clone the repository:
 
-```text
-Domain Services
-     ↓
-AI Services
-     ↓
-AI Provider
-```
+   ```bash
+   git clone https://github.com/mdarmanadl-byte/Revison.ai.git
+   cd Revison.ai
+   ```
 
-Workers sit outside the HTTP layer:
+2. Move into the backend directory:
 
-```text
-Queue
-  ↓
-Worker
-  ↓
-Domain Service
-```
+   ```bash
+   cd backend
+   ```
 
----
+3. Install dependencies:
 
-# 35. Required Helper Components
+   ```bash
+   npm install
+   ```
 
-The project will eventually need these shared components:
+4. Configure the environment variables used by the backend. At minimum, configure the PostgreSQL connection and NVIDIA API key according to the project's current environment configuration.
 
-```text
-Authentication
-File Storage
-Database
-Redis
-Queue
-Logger
-Error Handler
-Validation
-AI Client
-Embedding Client
-```
+   Create a local `.env` file. Do not commit secrets or API keys.
 
-These should be initialized once and reused.
+5. Generate the Prisma client and apply the database migrations using the scripts and Prisma setup in the backend:
+
+   ```bash
+   npx prisma generate
+   npx prisma migrate dev
+   ```
+
+6. Start the backend using the development script defined in `backend/package.json`.
+
+> Setup commands and required environment variables may evolve while the project is under active development. Check the backend package scripts and Prisma configuration if a command differs in your local checkout.
 
 ---
 
-# 36. Environment Variables
+## Contributing
 
-Example `.env`:
+Revison.ai is an open-source project under active development, and contributions are welcome.
 
-```env
-NODE_ENV=development
+You can contribute to areas such as:
 
-PORT=5000
+- PDF parsing, extraction, and document processing
+- Subject, topic, and concept organization
+- AI-powered summarization and question generation
+- RAG, embeddings, and semantic retrieval
+- Quiz evaluation and progress tracking
+- Adaptive revision and spaced-repetition research
+- Frontend integration and user experience
+- Testing, documentation, and bug fixes
 
-DATABASE_URL="postgresql://..."
+### Before starting
 
-REDIS_URL="redis://..."
+1. Check the current implementation and open issues.
+2. Discuss substantial changes before building a new module.
+3. Keep pull requests focused and explain what has been tested.
+4. Do not commit API keys, database credentials, uploaded private study material, or other secrets.
+5. If you are implementing an item from the planned architecture, make that clear in the pull request.
 
-JWT_SECRET="..."
-
-NVIDIA_API_KEY="..."
-
-STORAGE_ENDPOINT="..."
-STORAGE_BUCKET="..."
-STORAGE_ACCESS_KEY="..."
-STORAGE_SECRET_KEY="..."
-```
-
-Never commit `.env`.
-
-Commit:
-
-```text
-.env.example
-```
+Some architecture sections describe future direction. Please check whether a feature exists before depending on it.
 
 ---
 
-# 37. API Structure
+## Project status and limitations
 
-All API routes should start with:
+Revison.ai is a work in progress. The repository contains backend implementations for document processing, AI-assisted topic/concept extraction, study-material generation, semantic retrieval, RAG question answering, quizzes, and progress-related functionality.
 
-```text
-/api
-```
+The complete product experience is not finished. In particular, the long-term memory model, spaced-repetition scheduler, daily revision planner, full knowledge graph, background job architecture, and complete frontend integration remain future work or active development areas.
 
-Examples:
-
-```text
-/api/auth
-/api/users
-/api/documents
-/api/concepts
-/api/search
-/api/tests
-/api/revision
-/api/progress
-```
+The goal is to build these capabilities incrementally and keep the implementation, documentation, and project roadmap transparent.
 
 ---
 
-# 38. Development Order
+## Core principle
 
-Do NOT build everything simultaneously.
-
-## Phase 1 — Foundation
-
-```text
-Node.js
-TypeScript
-Express
-Prisma
-PostgreSQL
-Authentication
-```
-
-## Phase 2 — Documents
-
-```text
-Upload
-Storage
-PDF extraction
-Text cleaning
-Chunking
-```
-
-## Phase 3 — AI
-
-```text
-Nemotron integration
-Summarization
-Concept extraction
-Question generation
-```
-
-## Phase 4 — Knowledge
-
-```text
-Concepts
-Relationships
-Embeddings
-pgvector
-Semantic search
-```
-
-## Phase 5 — Tests
-
-```text
-Question bank
-Test creation
-Answer submission
-Evaluation
-```
-
-## Phase 6 — Memory
-
-```text
-Memory state
-Revision history
-Spaced repetition
-Revision scheduler
-```
-
-## Phase 7 — Workers
-
-```text
-Redis
-BullMQ
-Document worker
-Embedding worker
-Question worker
-```
-
-## Phase 8 — Frontend
-
-```text
-Dashboard
-Upload
-Knowledge
-Revision
-Tests
-Analytics
-```
-
----
-
-# 39. Core Principle
-
-ReviseAI is NOT:
-
-```text
-PDF
- ↓
-AI
- ↓
-Summary
-```
-
-It is:
+Revison.ai is intended to become more than a PDF summarizer.
 
 ```text
 STUDY MATERIAL
-      ↓
+      |
+      v
 UNDERSTANDING
-      ↓
-KNOWLEDGE
-      ↓
-MEMORY
-      ↓
-REVISION
-      ↓
+      |
+      v
+TOPICS AND CONCEPTS
+      |
+      v
 ACTIVE RECALL
-      ↓
-EVALUATION
-      ↓
-MEMORY UPDATE
-      ↓
-NEXT REVISION
+      |
+      v
+PRACTICE AND EVALUATION
+      |
+      v
+LEARNING HISTORY
+      |
+      v
+PERSONALIZED REVISION
 ```
 
-The long-term goal is:
-
-> **The system should know what the student has learned, how well they remember it, what they are forgetting, and what they should revise next.**
-
-That memory/revision loop is the core product.
+> **The long-term vision is for the system to help students understand what they have studied, recognize what they are struggling to remember, and decide what they should revise next.**
