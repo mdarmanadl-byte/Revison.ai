@@ -19,3 +19,10 @@ export async function deleteSubject(id) {
   const response = await api.delete(`/subjects/${id}`);
   return response.data;
 }
+export async function getStudyMaterial(documentId) {
+  const response = await api.post(
+    `/study-material/${documentId}`
+  );
+
+  return response.data;
+}

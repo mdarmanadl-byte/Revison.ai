@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-
+import { signup } from "../api/auth";
 function Signup() {
   const navigate = useNavigate();
 
@@ -8,22 +8,30 @@ function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  function handleSignup(e) {
+  async function handleSignup(e) {
     e.preventDefault();
 
-    localStorage.setItem("token", "frontend-demo-token");
-
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
+    try {
+      const data = await signup({
         name,
         email,
-      }),
-    );
+        password,
+      });
 
-    navigate("/dashboard");
+      localStorage.setItem("token", data.token);
+
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      // Store the REAL JWT returned by backend
+      localStorage.setItem("token", data.token);
+
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      navigate("/dashboard");
+    } catch (error) {
+      console.error("Error during signup:", error);
+    }
   }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#070B14] px-5">
       <div className="w-full max-w-md">

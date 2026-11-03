@@ -6,6 +6,7 @@ const uploadrouter = require('./routes/upload')
 const searchRouter = require('./documents/search')
 const askRouter = require('./routes/ask')
 const studyMaterialRouter = require('./routes/study-material')
+
 const path = require('path');
 const cors=require('cors')
 const app= express()
@@ -26,7 +27,6 @@ app.use('/upload',uploadrouter)
 app.use("/api/ask", askRouter);
 app.use("/api/search", searchRouter);
 app.use('/api',router) 
-
 
 
 app.use("/api/study-material", studyMaterialRouter);

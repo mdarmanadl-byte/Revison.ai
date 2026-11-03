@@ -1,3 +1,5 @@
 text.md
 
 /node_modules
+
+/backend/src/swagger-output.json

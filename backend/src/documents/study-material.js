@@ -32,7 +32,8 @@ function isRetryableError(error) {
         status === 429 ||
         status >= 500 ||
         error?.code === "ETIMEDOUT" ||
-        error?.code === "ECONNRESET"
+        error?.code === "ECONNRESET" ||
+        error?.code ==="INVALID_JSON"
     );
 }
 
@@ -67,7 +68,22 @@ async function withRetry(fn, label) {
 
     throw lastError;
 }
+function parseAIJson(content, label) {
+    if (!content || typeof content !== "string") {
+        throw new Error(`${label}: Empty AI response`);
+    }
 
+    try {
+        return JSON.parse(content);
+    } catch (error) {
+        const parseError = new Error(
+            `${label}: Invalid JSON returned by AI - ${error.message}`
+        );
+
+        parseError.code = "INVALID_JSON";
+        throw parseError;
+    }
+}
 async function analyzeBatch(chunks, batchNumber) {
     const context = chunks
         .map(
@@ -137,16 +153,32 @@ Do not add text outside JSON.
                     max_tokens: 3000,
                 });
 
-            const content =
-                response.choices?.[0]?.message?.content;
+            const choice = response.choices?.[0];
+const message = choice?.message;
+const content = message?.content;
 
-            if (!content) {
-                throw new Error(
-                    `Empty response from AI for batch ${batchNumber}`
-                );
-            }
+console.log(`Batch ${batchNumber} response metadata:`, {
+    id: response.id,
+    model: response.model,
+    finish_reason: choice?.finish_reason,
+    message_role: message?.role,
+    content_type: typeof content,
+    content_length: content?.length ?? 0,
+    refusal: message?.refusal,
+});
 
-            return JSON.parse(content);
+if (!content || typeof content !== "string" || !content.trim()) {
+    console.error(
+        `Empty AI response for batch ${batchNumber}:`,
+        JSON.stringify(response, null, 2)
+    );
+
+    throw new Error(
+        `Empty response from AI for batch ${batchNumber}`
+    );
+}
+
+            return parseAIJson(content, `Batch ${batchNumber}`);
         },
         `Batch ${batchNumber}`
     );
@@ -273,7 +305,7 @@ Do not add text outside JSON.
                 );
             }
 
-            return JSON.parse(content);
+            return  parseAIJson(content, "Final synthesis");
         },
         "Final synthesis"
     );

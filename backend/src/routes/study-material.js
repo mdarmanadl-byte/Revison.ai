@@ -76,23 +76,38 @@ router.post("/:documentId", async (req, res) => {
         // 4. Save result
         // ------------------------------------------------
 
-        const savedMaterial =
-            await prisma.studyMaterial.create({
-                data: {
-                    document_id: documentId,
+        let savedMaterial;
 
-                    summary: material.summary,
+try {
+    savedMaterial = await prisma.studyMaterial.create({
+        data: {
+            document_id: documentId,
+            summary: material.summary,
+            key_concepts: material.key_concepts,
+            important_points: material.important_points,
+            mcqs: material.mcqs,
+        },
+    });
+} catch (error) {
+    // Another request may have saved this document's material.
+    if (error.code === "P2002") {
+        savedMaterial = await prisma.studyMaterial.findUnique({
+            where: { document_id: documentId },
+        });
 
-                    key_concepts:
-                        material.key_concepts,
-
-                    important_points:
-                        material.important_points,
-
-                    mcqs:
-                        material.mcqs,
-                },
+        if (savedMaterial) {
+            return res.json({
+                success: true,
+                cached: true,
+                material: savedMaterial,
             });
+        }
+    }
+
+    throw error;
+}
+
+
 
         // ------------------------------------------------
         // 5. Return result
